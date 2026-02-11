@@ -133,98 +133,6 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn readOperand(self: *Self, operand: Operand) OperandData {
-            return switch (operand) {
-                .A => .{ .u8 = self.a },
-                .B => .{ .u8 = self.b },
-                .C => .{ .u8 = self.c },
-                .D => .{ .u8 = self.d },
-                .E => .{ .u8 = self.e },
-                .H => .{ .u8 = self.h },
-                .L => .{ .u8 = self.l },
-                .SP => .{ .u16 = self.sp },
-                .AF => .{ .u16 = self.getAf() },
-                .AFRef => .{ .u8 = self.bus.read(self.getAf()) },
-                .BC => .{ .u16 = self.getBc() },
-                .BCRef => .{ .u8 = self.bus.read(self.getBc()) },
-                .DE => .{ .u16 = self.getDe() },
-                .DERef => .{ .u8 = self.bus.read(self.getDe()) },
-                .HL => .{ .u16 = self.getHl() },
-                .HLRef => .{ .u8 = self.bus.read(self.getHl()) },
-                .N => {
-                    const data = self.bus.read(self.pc);
-
-                    self.pc += 1;
-
-                    return .{ .u8 = data };
-                },
-                .NN => {
-                    const lo = self.bus.read(self.pc);
-                    const hi = self.bus.read(self.pc + 1);
-                    const data = utils.join(hi, lo);
-
-                    self.pc += 2;
-
-                    return .{ .u16 = data };
-                },
-                .NNRef => {
-                    const lo = self.bus.read(self.pc);
-                    const hi = self.bus.read(self.pc + 1);
-                    const address = utils.join(hi, lo);
-
-                    self.pc += 2;
-
-                    return .{ .u8 = self.bus.read(address) };
-                },
-            };
-        }
-
-        pub fn writeOperand(self: *Self, operand: Operand, operand_data: OperandData) void {
-            switch (operand) {
-                .A => self.a = operand_data.u8,
-                .B => self.b = operand_data.u8,
-                .C => self.c = operand_data.u8,
-                .D => self.d = operand_data.u8,
-                .E => self.e = operand_data.u8,
-                .H => self.h = operand_data.u8,
-                .L => self.l = operand_data.u8,
-                .SP => self.sp = operand_data.u16,
-                .AF => self.setAf(operand_data.u16),
-                .AFRef => unreachable,
-                .BC => self.setBc(operand_data.u16),
-                .BCRef => self.bus.write(self.getBc(), operand_data.u8),
-                .DE => self.setDe(operand_data.u16),
-                .DERef => self.bus.write(self.getDe(), operand_data.u8),
-                .HL => self.setHl(operand_data.u16),
-                .HLRef => self.bus.write(self.getHl(), operand_data.u8),
-                .N => unreachable,
-                .NN => unreachable,
-                .NNRef => {
-                    switch (operand_data) {
-                        .u8 => |data| {
-                            const lo = self.bus.read(self.pc);
-                            const hi = self.bus.read(self.pc + 1);
-                            const address = utils.join(hi, lo);
-
-                            self.pc += 2;
-
-                            self.bus.write(address, data);
-                        },
-                        .u16 => |data| {
-                            const lo = self.bus.read(self.pc);
-                            const hi = self.bus.read(self.pc + 1);
-                            const address = utils.join(hi, lo);
-
-                            self.pc += 2;
-
-                            self.bus.write(address, @truncate(data));
-                            self.bus.write(address + 1, @truncate(data >> 8));
-                        },
-                    }
-                },
-            }
-        }
-
         pub fn step(self: *Self) u8 {
             const opcode = self.bus.read(self.pc);
             self.pc = self.pc +% 1;
@@ -442,14 +350,14 @@ pub fn Cpu(comptime BusType: type) type {
                 0xdc => _ = self.op_call(.C, .NN),
 
                 // stack
-                // 0xc1 => self.op_pop(.BC),
-                // 0xc5 => self.op_push(.BC),
-                // 0xd1 => self.op_pop(.DE),
-                // 0xd5 => self.op_push(.DE),
-                // 0xe1 => self.op_pop(.HL),
-                // 0xe5 => self.op_push(.HL),
-                // 0xf1 => self.op_pop(.AF),
-                // 0xf5 => self.op_push(.AF),
+                0xc1 => self.op_pop(.BC),
+                0xc5 => self.op_push(.BC),
+                0xd1 => self.op_pop(.DE),
+                0xd5 => self.op_push(.DE),
+                0xe1 => self.op_pop(.HL),
+                0xe5 => self.op_push(.HL),
+                0xf1 => self.op_pop(.AF),
+                0xf5 => self.op_push(.AF),
 
                 // misc
                 0x10 => {}, // TODO: STOP mode
@@ -457,26 +365,290 @@ pub fn Cpu(comptime BusType: type) type {
                 0x2f => self.op_cpl(),
                 0x37 => self.op_scf(),
                 0x3f => self.op_ccf(),
-                // 0x76 => self.op_halt(),
-                // 0xb8 => self.op_cp(.A, .B),
-                // 0xb9 => self.op_cp(.A, .C),
-                // 0xba => self.op_cp(.A, .D),
-                // 0xbb => self.op_cp(.A, .E),
-                // 0xbc => self.op_cp(.A, .H),
-                // 0xbd => self.op_cp(.A, .L),
-                // 0xbe => self.op_cp(.A, .HLRef),
-                // 0xbf => self.op_cp(.A, .A),
-                // 0xf3 => self.op_di(),
-                // 0xfb => self.op_ei(),
-                // 0xfe => self.op_cp(.A, .N),
-                // 0xc7 => self.op_rst(0x00),
-                // 0xd7 => self.op_rst(0x10),
-                // 0xe7 => self.op_rst(0x20),
-                // 0xf7 => self.op_rst(0x30),
-                // 0xcf => self.op_rst(0x08),
-                // 0xdf => self.op_rst(0x18),
-                // 0xef => self.op_rst(0x28),
-                // 0xff => self.op_rst(0x38),
+                0x76 => self.op_halt(),
+                0xb8 => self.op_cp(.A, .B),
+                0xb9 => self.op_cp(.A, .C),
+                0xba => self.op_cp(.A, .D),
+                0xbb => self.op_cp(.A, .E),
+                0xbc => self.op_cp(.A, .H),
+                0xbd => self.op_cp(.A, .L),
+                0xbe => self.op_cp(.A, .HLRef),
+                0xbf => self.op_cp(.A, .A),
+                0xf3 => self.op_di(),
+                0xfb => self.op_ei(),
+                0xfe => self.op_cp(.A, .N),
+                0xc7 => self.op_rst(0x00),
+                0xd7 => self.op_rst(0x10),
+                0xe7 => self.op_rst(0x20),
+                0xf7 => self.op_rst(0x30),
+                0xcf => self.op_rst(0x08),
+                0xdf => self.op_rst(0x18),
+                0xef => self.op_rst(0x28),
+                0xff => self.op_rst(0x38),
+
+                0xcb => {
+                    const prefix_opcode = self.bus.read(self.pc);
+                    self.pc = self.pc +% 1;
+
+                    switch (prefix_opcode) {
+                        0x00 => self.op_rlc(.B),
+                        0x01 => self.op_rlc(.C),
+                        0x02 => self.op_rlc(.D),
+                        0x03 => self.op_rlc(.E),
+                        0x04 => self.op_rlc(.H),
+                        0x05 => self.op_rlc(.L),
+                        0x06 => self.op_rlc(.HLRef),
+                        0x07 => self.op_rlc(.A),
+                        0x08 => self.op_rrc(.B),
+                        0x09 => self.op_rrc(.C),
+                        0x0a => self.op_rrc(.D),
+                        0x0b => self.op_rrc(.E),
+                        0x0c => self.op_rrc(.H),
+                        0x0d => self.op_rrc(.L),
+                        0x0e => self.op_rrc(.HLRef),
+                        0x0f => self.op_rrc(.A),
+                        0x10 => self.op_rl(.B),
+                        0x11 => self.op_rl(.C),
+                        0x12 => self.op_rl(.D),
+                        0x13 => self.op_rl(.E),
+                        0x14 => self.op_rl(.H),
+                        0x15 => self.op_rl(.L),
+                        0x16 => self.op_rl(.HLRef),
+                        0x17 => self.op_rl(.A),
+                        0x18 => self.op_rr(.B),
+                        0x19 => self.op_rr(.C),
+                        0x1a => self.op_rr(.D),
+                        0x1b => self.op_rr(.E),
+                        0x1c => self.op_rr(.H),
+                        0x1d => self.op_rr(.L),
+                        0x1e => self.op_rr(.HLRef),
+                        0x1f => self.op_rr(.A),
+                        0x20 => self.op_sla(.B),
+                        0x21 => self.op_sla(.C),
+                        0x22 => self.op_sla(.D),
+                        0x23 => self.op_sla(.E),
+                        0x24 => self.op_sla(.H),
+                        0x25 => self.op_sla(.L),
+                        0x26 => self.op_sla(.HLRef),
+                        0x27 => self.op_sla(.A),
+                        0x28 => self.op_sra(.B),
+                        0x29 => self.op_sra(.C),
+                        0x2a => self.op_sra(.D),
+                        0x2b => self.op_sra(.E),
+                        0x2c => self.op_sra(.H),
+                        0x2d => self.op_sra(.L),
+                        0x2e => self.op_sra(.HLRef),
+                        0x2f => self.op_sra(.A),
+                        0x30 => self.op_swap(.B),
+                        0x31 => self.op_swap(.C),
+                        0x32 => self.op_swap(.D),
+                        0x33 => self.op_swap(.E),
+                        0x34 => self.op_swap(.H),
+                        0x35 => self.op_swap(.L),
+                        0x36 => self.op_swap(.HLRef),
+                        0x37 => self.op_swap(.A),
+                        0x38 => self.op_srl(.B),
+                        0x39 => self.op_srl(.C),
+                        0x3a => self.op_srl(.D),
+                        0x3b => self.op_srl(.E),
+                        0x3c => self.op_srl(.H),
+                        0x3d => self.op_srl(.L),
+                        0x3e => self.op_srl(.HLRef),
+                        0x3f => self.op_srl(.A),
+                        0x40 => self.op_bit(0, .B),
+                        0x41 => self.op_bit(0, .C),
+                        0x42 => self.op_bit(0, .D),
+                        0x43 => self.op_bit(0, .E),
+                        0x44 => self.op_bit(0, .H),
+                        0x45 => self.op_bit(0, .L),
+                        0x46 => self.op_bit(0, .HLRef),
+                        0x47 => self.op_bit(0, .A),
+                        0x48 => self.op_bit(1, .B),
+                        0x49 => self.op_bit(1, .C),
+                        0x4a => self.op_bit(1, .D),
+                        0x4b => self.op_bit(1, .E),
+                        0x4c => self.op_bit(1, .H),
+                        0x4d => self.op_bit(1, .L),
+                        0x4e => self.op_bit(1, .HLRef),
+                        0x4f => self.op_bit(1, .A),
+                        0x50 => self.op_bit(2, .B),
+                        0x51 => self.op_bit(2, .C),
+                        0x52 => self.op_bit(2, .D),
+                        0x53 => self.op_bit(2, .E),
+                        0x54 => self.op_bit(2, .H),
+                        0x55 => self.op_bit(2, .L),
+                        0x56 => self.op_bit(2, .HLRef),
+                        0x57 => self.op_bit(2, .A),
+                        0x58 => self.op_bit(3, .B),
+                        0x59 => self.op_bit(3, .C),
+                        0x5a => self.op_bit(3, .D),
+                        0x5b => self.op_bit(3, .E),
+                        0x5c => self.op_bit(3, .H),
+                        0x5d => self.op_bit(3, .L),
+                        0x5e => self.op_bit(3, .HLRef),
+                        0x5f => self.op_bit(3, .A),
+                        0x60 => self.op_bit(4, .B),
+                        0x61 => self.op_bit(4, .C),
+                        0x62 => self.op_bit(4, .D),
+                        0x63 => self.op_bit(4, .E),
+                        0x64 => self.op_bit(4, .H),
+                        0x65 => self.op_bit(4, .L),
+                        0x66 => self.op_bit(4, .HLRef),
+                        0x67 => self.op_bit(4, .A),
+                        0x68 => self.op_bit(5, .B),
+                        0x69 => self.op_bit(5, .C),
+                        0x6a => self.op_bit(5, .D),
+                        0x6b => self.op_bit(5, .E),
+                        0x6c => self.op_bit(5, .H),
+                        0x6d => self.op_bit(5, .L),
+                        0x6e => self.op_bit(5, .HLRef),
+                        0x6f => self.op_bit(5, .A),
+                        0x70 => self.op_bit(6, .B),
+                        0x71 => self.op_bit(6, .C),
+                        0x72 => self.op_bit(6, .D),
+                        0x73 => self.op_bit(6, .E),
+                        0x74 => self.op_bit(6, .H),
+                        0x75 => self.op_bit(6, .L),
+                        0x76 => self.op_bit(6, .HLRef),
+                        0x77 => self.op_bit(6, .A),
+                        0x78 => self.op_bit(7, .B),
+                        0x79 => self.op_bit(7, .C),
+                        0x7a => self.op_bit(7, .D),
+                        0x7b => self.op_bit(7, .E),
+                        0x7c => self.op_bit(7, .H),
+                        0x7d => self.op_bit(7, .L),
+                        0x7e => self.op_bit(7, .HLRef),
+                        0x7f => self.op_bit(7, .A),
+                        0x80 => self.op_res(0, .B),
+                        0x81 => self.op_res(0, .C),
+                        0x82 => self.op_res(0, .D),
+                        0x83 => self.op_res(0, .E),
+                        0x84 => self.op_res(0, .H),
+                        0x85 => self.op_res(0, .L),
+                        0x86 => self.op_res(0, .HLRef),
+                        0x87 => self.op_res(0, .A),
+                        0x88 => self.op_res(1, .B),
+                        0x89 => self.op_res(1, .C),
+                        0x8a => self.op_res(1, .D),
+                        0x8b => self.op_res(1, .E),
+                        0x8c => self.op_res(1, .H),
+                        0x8d => self.op_res(1, .L),
+                        0x8e => self.op_res(1, .HLRef),
+                        0x8f => self.op_res(1, .A),
+                        0x90 => self.op_res(2, .B),
+                        0x91 => self.op_res(2, .C),
+                        0x92 => self.op_res(2, .D),
+                        0x93 => self.op_res(2, .E),
+                        0x94 => self.op_res(2, .H),
+                        0x95 => self.op_res(2, .L),
+                        0x96 => self.op_res(2, .HLRef),
+                        0x97 => self.op_res(2, .A),
+                        0x98 => self.op_res(3, .B),
+                        0x99 => self.op_res(3, .C),
+                        0x9a => self.op_res(3, .D),
+                        0x9b => self.op_res(3, .E),
+                        0x9c => self.op_res(3, .H),
+                        0x9d => self.op_res(3, .L),
+                        0x9e => self.op_res(3, .HLRef),
+                        0x9f => self.op_res(3, .A),
+                        0xa0 => self.op_res(4, .B),
+                        0xa1 => self.op_res(4, .C),
+                        0xa2 => self.op_res(4, .D),
+                        0xa3 => self.op_res(4, .E),
+                        0xa4 => self.op_res(4, .H),
+                        0xa5 => self.op_res(4, .L),
+                        0xa6 => self.op_res(4, .HLRef),
+                        0xa7 => self.op_res(4, .A),
+                        0xa8 => self.op_res(5, .B),
+                        0xa9 => self.op_res(5, .C),
+                        0xaa => self.op_res(5, .D),
+                        0xab => self.op_res(5, .E),
+                        0xac => self.op_res(5, .H),
+                        0xad => self.op_res(5, .L),
+                        0xae => self.op_res(5, .HLRef),
+                        0xaf => self.op_res(5, .A),
+                        0xb0 => self.op_res(6, .B),
+                        0xb1 => self.op_res(6, .C),
+                        0xb2 => self.op_res(6, .D),
+                        0xb3 => self.op_res(6, .E),
+                        0xb4 => self.op_res(6, .H),
+                        0xb5 => self.op_res(6, .L),
+                        0xb6 => self.op_res(6, .HLRef),
+                        0xb7 => self.op_res(6, .A),
+                        0xb8 => self.op_res(7, .B),
+                        0xb9 => self.op_res(7, .C),
+                        0xba => self.op_res(7, .D),
+                        0xbb => self.op_res(7, .E),
+                        0xbc => self.op_res(7, .H),
+                        0xbd => self.op_res(7, .L),
+                        0xbe => self.op_res(7, .HLRef),
+                        0xbf => self.op_res(7, .A),
+                        0xc0 => self.op_set(0, .B),
+                        0xc1 => self.op_set(0, .C),
+                        0xc2 => self.op_set(0, .D),
+                        0xc3 => self.op_set(0, .E),
+                        0xc4 => self.op_set(0, .H),
+                        0xc5 => self.op_set(0, .L),
+                        0xc6 => self.op_set(0, .HLRef),
+                        0xc7 => self.op_set(0, .A),
+                        0xc8 => self.op_set(1, .B),
+                        0xc9 => self.op_set(1, .C),
+                        0xca => self.op_set(1, .D),
+                        0xcb => self.op_set(1, .E),
+                        0xcc => self.op_set(1, .H),
+                        0xcd => self.op_set(1, .L),
+                        0xce => self.op_set(1, .HLRef),
+                        0xcf => self.op_set(1, .A),
+                        0xd0 => self.op_set(2, .B),
+                        0xd1 => self.op_set(2, .C),
+                        0xd2 => self.op_set(2, .D),
+                        0xd3 => self.op_set(2, .E),
+                        0xd4 => self.op_set(2, .H),
+                        0xd5 => self.op_set(2, .L),
+                        0xd6 => self.op_set(2, .HLRef),
+                        0xd7 => self.op_set(2, .A),
+                        0xd8 => self.op_set(3, .B),
+                        0xd9 => self.op_set(3, .C),
+                        0xda => self.op_set(3, .D),
+                        0xdb => self.op_set(3, .E),
+                        0xdc => self.op_set(3, .H),
+                        0xdd => self.op_set(3, .L),
+                        0xde => self.op_set(3, .HLRef),
+                        0xdf => self.op_set(3, .A),
+                        0xe0 => self.op_set(4, .B),
+                        0xe1 => self.op_set(4, .C),
+                        0xe2 => self.op_set(4, .D),
+                        0xe3 => self.op_set(4, .E),
+                        0xe4 => self.op_set(4, .H),
+                        0xe5 => self.op_set(4, .L),
+                        0xe6 => self.op_set(4, .HLRef),
+                        0xe7 => self.op_set(4, .A),
+                        0xe8 => self.op_set(5, .B),
+                        0xe9 => self.op_set(5, .C),
+                        0xea => self.op_set(5, .D),
+                        0xeb => self.op_set(5, .E),
+                        0xec => self.op_set(5, .H),
+                        0xed => self.op_set(5, .L),
+                        0xee => self.op_set(5, .HLRef),
+                        0xef => self.op_set(5, .A),
+                        0xf0 => self.op_set(6, .B),
+                        0xf1 => self.op_set(6, .C),
+                        0xf2 => self.op_set(6, .D),
+                        0xf3 => self.op_set(6, .E),
+                        0xf4 => self.op_set(6, .H),
+                        0xf5 => self.op_set(6, .L),
+                        0xf6 => self.op_set(6, .HLRef),
+                        0xf7 => self.op_set(6, .A),
+                        0xf8 => self.op_set(7, .B),
+                        0xf9 => self.op_set(7, .C),
+                        0xfa => self.op_set(7, .D),
+                        0xfb => self.op_set(7, .E),
+                        0xfc => self.op_set(7, .H),
+                        0xfd => self.op_set(7, .L),
+                        0xfe => self.op_set(7, .HLRef),
+                        0xff => self.op_set(7, .A),
+                    }
+                },
 
                 else => std.debug.panic("Opcode 0x{x} not implemented\n", .{opcode}),
             }
@@ -484,7 +656,99 @@ pub fn Cpu(comptime BusType: type) type {
             return meta.cycles;
         }
 
-        fn pushWord(self: *Self, value: u16) void {
+        fn readOperand(self: *Self, operand: Operand) OperandData {
+            return switch (operand) {
+                .A => .{ .u8 = self.a },
+                .B => .{ .u8 = self.b },
+                .C => .{ .u8 = self.c },
+                .D => .{ .u8 = self.d },
+                .E => .{ .u8 = self.e },
+                .H => .{ .u8 = self.h },
+                .L => .{ .u8 = self.l },
+                .SP => .{ .u16 = self.sp },
+                .AF => .{ .u16 = self.getAf() },
+                .AFRef => .{ .u8 = self.bus.read(self.getAf()) },
+                .BC => .{ .u16 = self.getBc() },
+                .BCRef => .{ .u8 = self.bus.read(self.getBc()) },
+                .DE => .{ .u16 = self.getDe() },
+                .DERef => .{ .u8 = self.bus.read(self.getDe()) },
+                .HL => .{ .u16 = self.getHl() },
+                .HLRef => .{ .u8 = self.bus.read(self.getHl()) },
+                .N => {
+                    const data = self.bus.read(self.pc);
+
+                    self.pc += 1;
+
+                    return .{ .u8 = data };
+                },
+                .NN => {
+                    const lo = self.bus.read(self.pc);
+                    const hi = self.bus.read(self.pc + 1);
+                    const data = utils.join(hi, lo);
+
+                    self.pc += 2;
+
+                    return .{ .u16 = data };
+                },
+                .NNRef => {
+                    const lo = self.bus.read(self.pc);
+                    const hi = self.bus.read(self.pc + 1);
+                    const address = utils.join(hi, lo);
+
+                    self.pc += 2;
+
+                    return .{ .u8 = self.bus.read(address) };
+                },
+            };
+        }
+
+        fn writeOperand(self: *Self, operand: Operand, operand_data: OperandData) void {
+            switch (operand) {
+                .A => self.a = operand_data.u8,
+                .B => self.b = operand_data.u8,
+                .C => self.c = operand_data.u8,
+                .D => self.d = operand_data.u8,
+                .E => self.e = operand_data.u8,
+                .H => self.h = operand_data.u8,
+                .L => self.l = operand_data.u8,
+                .SP => self.sp = operand_data.u16,
+                .AF => self.setAf(operand_data.u16),
+                .AFRef => unreachable,
+                .BC => self.setBc(operand_data.u16),
+                .BCRef => self.bus.write(self.getBc(), operand_data.u8),
+                .DE => self.setDe(operand_data.u16),
+                .DERef => self.bus.write(self.getDe(), operand_data.u8),
+                .HL => self.setHl(operand_data.u16),
+                .HLRef => self.bus.write(self.getHl(), operand_data.u8),
+                .N => unreachable,
+                .NN => unreachable,
+                .NNRef => {
+                    switch (operand_data) {
+                        .u8 => |data| {
+                            const lo = self.bus.read(self.pc);
+                            const hi = self.bus.read(self.pc + 1);
+                            const address = utils.join(hi, lo);
+
+                            self.pc += 2;
+
+                            self.bus.write(address, data);
+                        },
+                        .u16 => |data| {
+                            const lo = self.bus.read(self.pc);
+                            const hi = self.bus.read(self.pc + 1);
+                            const address = utils.join(hi, lo);
+
+                            self.pc += 2;
+
+                            self.bus.write(address, @truncate(data));
+                            self.bus.write(address + 1, @truncate(data >> 8));
+                        },
+                    }
+                },
+            }
+        }
+
+        inline fn pushWord(self: *Self, value: u16) void {
             self.sp -%= 2;
 
             const parts = utils.split(value);
@@ -492,7 +756,7 @@ pub fn Cpu(comptime BusType: type) type {
             self.bus.write(self.sp +% 1, parts.hi);
         }
 
-        fn popWord(self: *Self) u16 {
+        inline fn popWord(self: *Self) u16 {
             const value = utils.join(self.bus.read(self.sp + 1), self.bus.read(self.sp));
 
             self.sp +%= 2;
@@ -500,25 +764,25 @@ pub fn Cpu(comptime BusType: type) type {
             return value;
         }
 
-        pub fn op_nop(_: *Self) void {}
+        fn op_nop(_: *Self) void {}
 
         // --- load
-        pub fn op_ld(self: *Self, target: Operand, source: Operand) void {
+        fn op_ld(self: *Self, target: Operand, source: Operand) void {
             self.writeOperand(target, self.readOperand(source));
         }
 
-        pub fn op_ldi(self: *Self, target: Operand, source: Operand) void {
+        fn op_ldi(self: *Self, target: Operand, source: Operand) void {
             self.op_ld(target, source);
             self.setHl(self.getHl() +% 1);
         }
 
-        pub fn op_ldd(self: *Self, target: Operand, source: Operand) void {
+        fn op_ldd(self: *Self, target: Operand, source: Operand) void {
             self.op_ld(target, source);
             self.setHl(self.getHl() -% 1);
         }
 
         // --- arithmetic
-        pub fn op_inc(self: *Self, target: Operand) void {
+        fn op_inc(self: *Self, target: Operand) void {
             switch (self.readOperand(target)) {
                 .u8 => |data| {
                     const result = data +% 1;
@@ -535,7 +799,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_dec(self: *Self, target: Operand) void {
+        fn op_dec(self: *Self, target: Operand) void {
             switch (self.readOperand(target)) {
                 .u8 => |data| {
                     const result = data -% 1;
@@ -552,7 +816,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_add(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_add(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -606,7 +870,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_sub(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_sub(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -629,7 +893,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_adc(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_adc(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -653,7 +917,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_sbc(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_sbc(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -681,7 +945,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_ra(self: *Self, direction: Direction) void {
+        fn op_ra(self: *Self, direction: Direction) void {
             const old_carry: u8 = @intFromBool(self.getFlag(.C));
 
             const result = switch (direction) {
@@ -703,7 +967,7 @@ pub fn Cpu(comptime BusType: type) type {
             self.a = result[0];
         }
 
-        pub fn op_rca(self: *Self, direction: Direction) void {
+        fn op_rca(self: *Self, direction: Direction) void {
             const result = switch (direction) {
                 .Left => .{ std.math.rotl(u8, self.a, 1), (self.a & (1 << 7)) != 0 },
                 .Right => .{ std.math.rotr(u8, self.a, 1), (self.a & 1) != 0 },
@@ -717,7 +981,7 @@ pub fn Cpu(comptime BusType: type) type {
             self.a = result[0];
         }
 
-        pub fn op_xor(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_xor(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -738,7 +1002,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_or(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_or(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -759,7 +1023,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_and(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_and(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -780,7 +1044,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn op_cp(self: *Self, comptime target: Operand, comptime source: Operand) void {
+        fn op_cp(self: *Self, comptime target: Operand, comptime source: Operand) void {
             const target_op_data = self.readOperand(target);
             const source_op_data = self.readOperand(source);
 
@@ -800,12 +1064,12 @@ pub fn Cpu(comptime BusType: type) type {
         }
 
         // --- jump
-        pub fn op_jr(self: *Self, condition: Condition, operand: Operand) bool {
+        fn op_jr(self: *Self, condition: Condition, operand: Operand) bool {
             const operand_data = self.readOperand(operand);
 
             const data = switch (operand_data) {
                 .u8 => |data| data,
-                else => std.debug.panic("Invalid jr address", .{}),
+                else => unreachable,
             };
 
             const offset = utils.toRelativeOffset(data);
@@ -827,12 +1091,12 @@ pub fn Cpu(comptime BusType: type) type {
             return true;
         }
 
-        pub fn op_jp(self: *Self, condition: Condition, operand: Operand) bool {
+        fn op_jp(self: *Self, condition: Condition, operand: Operand) bool {
             const operand_data = self.readOperand(operand);
 
             const address = switch (operand_data) {
-                .u8 => |data| data,
-                else => std.debug.panic("Invalid jr address", .{}),
+                .u16 => |data| data,
+                else => unreachable,
             };
 
             const should_jump = switch (condition) {
@@ -852,7 +1116,7 @@ pub fn Cpu(comptime BusType: type) type {
             return true;
         }
 
-        pub fn op_ret(self: *Self, condition: Condition) bool {
+        fn op_ret(self: *Self, condition: Condition) bool {
             const should_return = switch (condition) {
                 .Z => self.getFlag(.Z),
                 .C => self.getFlag(.C),
@@ -870,17 +1134,17 @@ pub fn Cpu(comptime BusType: type) type {
             return true;
         }
 
-        pub fn op_reti(self: *Self) void {
+        fn op_reti(self: *Self) void {
             _ = self;
             unreachable;
         }
 
-        pub fn op_call(self: *Self, condition: Condition, operand: Operand) bool {
+        fn op_call(self: *Self, condition: Condition, operand: Operand) bool {
             const operand_data = self.readOperand(operand);
 
             const address = switch (operand_data) {
-                .u8 => |data| data,
-                else => std.debug.panic("Invalid jr address", .{}),
+                .u16 => |data| data,
+                else => unreachable,
             };
 
             const should_call = switch (condition) {
@@ -901,18 +1165,18 @@ pub fn Cpu(comptime BusType: type) type {
             return true;
         }
 
-        pub fn op_rst(self: *Self, vector: u8) void {
+        fn op_rst(self: *Self, vector: u8) void {
             self.pushWord(self.pc);
             self.pc = vector;
         }
 
-        pub fn op_pop(self: *Self, operand: Operand) void {
+        fn op_pop(self: *Self, operand: Operand) void {
             const value = self.popWord();
 
             self.writeOperand(operand, .{ .u16 = value });
         }
 
-        pub fn op_push(self: *Self, operand: Operand) void {
+        fn op_push(self: *Self, operand: Operand) void {
             const value = switch (self.readOperand(operand)) {
                 .u16 => |v| v,
                 else => unreachable,
@@ -922,19 +1186,19 @@ pub fn Cpu(comptime BusType: type) type {
         }
 
         // --- misc
-        pub fn op_di(self: *Self) void {
+        fn op_di(self: *Self) void {
             self.ime = false;
         }
 
-        pub fn op_ei(self: *Self) void {
+        fn op_ei(self: *Self) void {
             self.ime = true;
         }
 
-        pub fn op_halt(self: *Self) void {
+        fn op_halt(self: *Self) void {
             self.halted = true;
         }
 
-        pub fn op_daa(self: *Self) void {
+        fn op_daa(self: *Self) void {
             if (self.getFlag(.N)) {
                 if (self.getFlag(.C)) {
                     self.a -%= 0x60;
@@ -958,25 +1222,229 @@ pub fn Cpu(comptime BusType: type) type {
             self.setFlag(.H, false);
         }
 
-        pub fn op_cpl(self: *Self) void {
+        fn op_cpl(self: *Self) void {
             self.a = ~self.a;
 
             self.setFlag(.N, true);
             self.setFlag(.H, true);
         }
 
-        pub fn op_scf(self: *Self) void {
+        fn op_scf(self: *Self) void {
             self.setFlag(.N, false);
             self.setFlag(.H, false);
             self.setFlag(.C, true);
         }
 
-        pub fn op_ccf(self: *Self) void {
+        fn op_ccf(self: *Self) void {
             const c = self.getFlag(.C);
 
             self.setFlag(.N, false);
             self.setFlag(.H, false);
             self.setFlag(.C, !c);
+        }
+
+        // --- rotate & swap
+        pub fn op_rl(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const old_carry: u8 = @intFromBool(self.getFlag(.C));
+                    const new_carry = (data & 0x80) != 0;
+
+                    const result = (data << 1) | old_carry;
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_rr(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const old_carry: u8 = @intFromBool(self.getFlag(.C));
+                    const new_carry = (data & 1) != 0;
+
+                    const result = (data >> 1) | (old_carry << 7);
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_rlc(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const new_carry = (data & 0x80) != 0;
+
+                    const result = (data << 1) | (data >> 7);
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_rrc(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const new_carry = (data & 1) != 0;
+
+                    const result = (data >> 1) | (data << 7);
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_swap(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const result = (data << 4) | (data >> 4);
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, false);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        // shift
+        pub fn op_sla(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const new_carry = (data & 0x80) != 0;
+                    const result = data << 1;
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_srl(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const new_carry = (data & 1) != 0;
+                    const result = data >> 1;
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_sra(self: *Self, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const new_carry = (data & 1) != 0;
+                    const result = (data >> 1) | (data & 0x80);
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, false);
+                    self.setFlag(.C, new_carry);
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        // --- bit manipulation
+        pub fn op_bit(self: *Self, bit_idx: u3, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const mask = @as(u8, 1) << bit_idx;
+                    const result = data & mask;
+
+                    self.setFlag(.Z, result == 0);
+                    self.setFlag(.N, false);
+                    self.setFlag(.H, true);
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_res(self: *Self, bit_idx: u3, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const mask = ~(@as(u8, 1) << bit_idx);
+                    const result = data & mask;
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
+        }
+
+        pub fn op_set(self: *Self, bit_idx: u3, comptime operand: Operand) void {
+            const op_data = self.readOperand(operand);
+
+            switch (op_data) {
+                .u8 => |data| {
+                    const mask = @as(u8, 1) << bit_idx;
+                    const result = data | mask;
+
+                    self.writeOperand(operand, .{ .u8 = result });
+                },
+                else => unreachable,
+            }
         }
     };
 }
@@ -987,10 +1455,6 @@ pub fn Cpu(comptime BusType: type) type {
 
 const testing = std.testing;
 const config = @import("config");
-
-test "simple test" {
-    std.debug.print("Simple test running\n", .{});
-}
 
 const TestState = struct {
     pc: u16,
