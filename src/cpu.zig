@@ -38,10 +38,23 @@ const Direction = enum {
     Right,
 };
 
+pub const Interrupt = enum(u8) {
+    VBlank = 0b0000_0001,
+    LCD = 0b0000_0010,
+    Timer = 0b0000_0100,
+    Serial = 0b0000_1000,
+    Joypad = 0b0001_0000,
+};
+
+pub const Clock = struct {
+    t: u64 = 0,
+    m: u64 = 0,
+};
+
 pub fn Cpu(comptime BusType: type) type {
     return struct {
+        clock: Clock = .{},
         bus: *BusType,
-        // clock: Clock,
         a: u8,
         f: u8,
         b: u8,
@@ -53,6 +66,8 @@ pub fn Cpu(comptime BusType: type) type {
         sp: u16,
         pc: u16,
         ime: bool,
+        ime_scheduled: bool,
+        enable_ime_next_cycle: bool,
         halted: bool,
 
         const Self = @This();
@@ -70,7 +85,9 @@ pub fn Cpu(comptime BusType: type) type {
                 .l = 0,
                 .sp = 0,
                 .pc = 0,
-                .ime = true,
+                .ime = false,
+                .ime_scheduled = false,
+                .enable_ime_next_cycle = false,
                 .halted = false,
             };
         }
@@ -125,6 +142,95 @@ pub fn Cpu(comptime BusType: type) type {
             } else {
                 self.f = self.f & ~@intFromEnum(flag);
             }
+        }
+
+        pub fn cycle(self: *Self) void {
+            const t = if (self.halted) 4 else self.step();
+            const m = t / 4;
+
+            self.clock.t += t;
+            self.clock.m += m;
+
+            // TODO: verify this
+            if (self.bus.in_dma) {
+                for (0..m) |_| {
+                    if (self.bus.dma_index < 160) {
+                        const source = utils.join(self.bus.dma, @truncate(self.bus.dma_index));
+                        const value = self.bus.read(source);
+
+                        const dest = 0xFE00 | @as(u16, self.bus.dma_index);
+
+                        self.bus.write(dest, value);
+                        self.bus.dma_index += 1;
+                    } else {
+                        self.bus.dma_index = 0;
+                        self.bus.in_dma = false;
+                        break;
+                    }
+                }
+            }
+
+            const gpu_interrupt = self.bus.gpu.cycle(t);
+            if (gpu_interrupt) |interrup| {
+                self.bus.intf |= @intFromEnum(interrup);
+            }
+
+            const timer_interrupt = self.bus.timer.cycle(t);
+            if (timer_interrupt) |interrupt| {
+                self.bus.intf |= @intFromEnum(interrupt);
+            }
+
+            self.checkHaltState();
+            self.handleInterrupts();
+
+            // TODO: verify this
+            if (self.enable_ime_next_cycle) {
+                // enable IME next cycle
+                if (self.ime_scheduled) {
+                    self.ime = true;
+                    self.ime_scheduled = false;
+                    self.enable_ime_next_cycle = false;
+                } else {
+                    self.ime_scheduled = true;
+                }
+            } else {
+                self.ime_scheduled = false;
+            }
+        }
+
+        pub fn checkHaltState(self: *Self) void {
+            if (!self.halted) {
+                return;
+            }
+
+            const pending_interrupts = self.bus.intf & self.bus.inte;
+            if (pending_interrupts > 0) {
+                self.halted = false;
+            }
+        }
+
+        pub fn handleInterrupts(self: *Self) void {
+            if (!self.ime) {
+                return;
+            }
+
+            const pending_interrupts = self.bus.intf & self.bus.inte;
+            if (pending_interrupts == 0) {
+                return;
+            }
+
+            const idx = @ctz(pending_interrupts);
+
+            self.ime = false;
+
+            const mask = @as(u8, 1) << @intCast(idx);
+            self.bus.intf &= ~mask; // clear interrupt
+
+            const vector = 0x40 + (@as(u16, @intCast(idx)) * 8);
+            self.op_rst(vector);
+
+            self.clock.t += 20;
+            self.clock.m += 5;
         }
 
         pub fn step(self: *Self) u8 {
@@ -1221,7 +1327,7 @@ pub fn Cpu(comptime BusType: type) type {
             return true;
         }
 
-        fn op_rst(self: *Self, vector: u8) void {
+        fn op_rst(self: *Self, vector: u16) void {
             self.pushWord(self.pc);
             self.pc = vector;
         }
@@ -1244,10 +1350,11 @@ pub fn Cpu(comptime BusType: type) type {
         // --- misc
         fn op_di(self: *Self) void {
             self.ime = false;
+            self.ime_scheduled = false;
         }
 
         fn op_ei(self: *Self) void {
-            self.ime = true;
+            self.ime_scheduled = true;
         }
 
         fn op_halt(self: *Self) void {

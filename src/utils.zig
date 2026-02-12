@@ -14,3 +14,15 @@ pub inline fn split(value: u16) struct { hi: u8, lo: u8 } {
 pub inline fn toRelativeOffset(value: u8) u16 {
     return @bitCast(@as(i16, @as(i8, @bitCast(value))));
 }
+
+pub inline fn checkBit(value: u8, bit: u3) bool {
+    return (value & (@as(u8, 1) << bit)) != 0;
+}
+
+pub inline fn setBit(value: u8, bit: u3) u8 {
+    return value | (@as(u8, 1) << bit);
+}
+
+pub inline fn clearBit(value: u8, bit: u3) u8 {
+    return value & ~(@as(u8, 1) << bit);
+}

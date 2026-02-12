@@ -1,4 +1,5 @@
 const std = @import("std");
+const cpu = @import("cpu.zig");
 
 pub const Timer = struct {
     div: u8 = 0,
@@ -10,6 +11,13 @@ pub const Timer = struct {
 
     pub fn init() Self {
         return .{};
+    }
+
+    pub fn cycle(self: *Self, cycles: u8) ?cpu.Interrupt {
+        _ = self;
+        _ = cycles;
+        const interrupt: cpu.Interrupt = undefined;
+        return interrupt;
     }
 
     pub fn read(self: *const Self, address: u16) u8 {

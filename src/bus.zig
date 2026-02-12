@@ -24,6 +24,7 @@ pub const Bus = struct {
     sc: u8 = 0,
     disable_bootrom: u8 = 0,
     dma: u8 = 0,
+    dma_index: u8 = 0,
     in_dma: bool = false,
 
     const Self = @This();
@@ -40,6 +41,14 @@ pub const Bus = struct {
             .joypad = joypad,
             .timer = timer,
         };
+    }
+
+    pub fn loadBootrom(self: *Self, data: []u8) void {
+        if (data.len > self.bootrom.len) {
+            std.debug.panic("bus: bootrom data too large", .{});
+        }
+
+        @memcpy(self.bootrom[0..data.len], data);
     }
 
     pub fn read(self: *const Self, address: u16) u8 {

@@ -74,9 +74,9 @@ pub const Apu = struct {
 
     pub fn read(self: *const Self, address: u16) u8 {
         return switch (address) {
-            0xff10...0xff14 => self.channels[0].read(@truncate(address)),
+            0xff10...0xff14 => self.channels[0].read(@truncate(address - 0xff10)),
             0xff15 => 0xff,
-            0xff16...0xff19 => self.channels[1].read(@as(u8, @truncate(address)) - 5),
+            0xff16...0xff19 => self.channels[1].read(@truncate(address - 0xff15)),
 
             // channel 3
             0xff1a => self.nr30,
@@ -106,9 +106,9 @@ pub const Apu = struct {
 
     pub fn write(self: *Self, address: u16, value: u8) void {
         switch (address) {
-            0xff10...0xff14 => self.channels[0].write(@truncate(address), value),
+            0xff10...0xff14 => self.channels[0].write(@truncate(address - 0xff10), value),
             0xff15 => {},
-            0xff16...0xff19 => self.channels[1].write(@as(u8, @truncate(address)) - 5, value),
+            0xff16...0xff19 => self.channels[1].write(@as(u8, @truncate(address - 0xff15)), value),
 
             // Channel 3
             0xff1a => self.nr30 = value,
