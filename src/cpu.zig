@@ -6,16 +6,10 @@ const Apu = @import("apu.zig").Apu;
 const Joypad = @import("joypad.zig").Joypad;
 const Timer = @import("timer.zig").Timer;
 const utils = @import("utils.zig");
+const isa = @import("isa.zig");
 
-const OpcodeMeta = struct {
-    mnemonic: []const u8,
-    length: u8,
-    cycles: u8,
-};
-
-const ISA = [_]OpcodeMeta{
-    .{ .mnemonic = "NOP", .length = 1, .cycles = 4 },
-} ++ [_]OpcodeMeta{.{ .mnemonic = "???", .length = 1, .cycles = 4 }} ** 255;
+const ISA = isa.ISA;
+const CB_ISA = isa.CB_ISA;
 
 const Operand = enum { A, B, C, D, E, H, L, SP, AF, AFRef, BC, BCRef, DE, DERef, HL, HLRef, N, NN, NNRef };
 
@@ -138,9 +132,11 @@ pub fn Cpu(comptime BusType: type) type {
             self.pc = self.pc +% 1;
 
             const meta = ISA[opcode];
+            var cycles = meta.cycles;
 
             switch (opcode) {
                 0x00 => self.op_nop(),
+
                 // load
                 0x01 => self.op_ld(.BC, .NN),
                 0x02 => self.op_ld(.BCRef, .A),
@@ -226,6 +222,14 @@ pub fn Cpu(comptime BusType: type) type {
                 0x7d => self.op_ld(.A, .L),
                 0x7e => self.op_ld(.A, .HLRef),
                 0x7f => self.op_ld(.A, .A),
+                0xe0 => self.op_ldh(.N, .A),
+                0xe2 => self.op_ldh(.C, .A),
+                0xea => self.op_ld(.NNRef, .A),
+                0xf0 => self.op_ldh(.A, .N),
+                0xf2 => self.op_ldh(.A, .C),
+                0xf8 => self.op_ldhl(),
+                0xf9 => self.op_ld(.SP, .HL),
+                0xfa => self.op_ld(.A, .NNRef),
 
                 // arithmetic
                 0x03 => self.op_inc(.BC),
@@ -327,27 +331,27 @@ pub fn Cpu(comptime BusType: type) type {
 
                 // jump
                 0x18 => _ = self.op_jr(.None, .N),
-                0x20 => _ = self.op_jr(.NZ, .N),
-                0x28 => _ = self.op_jr(.Z, .N),
-                0x30 => _ = self.op_jr(.NC, .N),
-                0x38 => _ = self.op_jr(.C, .N),
-                0xc0 => _ = self.op_ret(.NZ),
-                0xc2 => _ = self.op_jp(.NZ, .NN),
+                0x20 => cycles += if (self.op_jr(.NZ, .N)) meta.extra_cycles else 0,
+                0x28 => cycles += if (self.op_jr(.Z, .N)) meta.extra_cycles else 0,
+                0x30 => cycles += if (self.op_jr(.NC, .N)) meta.extra_cycles else 0,
+                0x38 => cycles += if (self.op_jr(.C, .N)) meta.extra_cycles else 0,
+                0xc0 => cycles += if (self.op_ret(.NZ)) meta.extra_cycles else 0,
+                0xc2 => cycles += if (self.op_jp(.NZ, .NN)) meta.extra_cycles else 0,
                 0xc3 => _ = self.op_jp(.None, .NN),
-                0xc8 => _ = self.op_ret(.Z),
+                0xc8 => cycles += if (self.op_ret(.Z)) meta.extra_cycles else 0,
                 0xc9 => _ = self.op_ret(.None),
-                0xca => _ = self.op_jp(.Z, .NN),
-                0xd0 => _ = self.op_ret(.NC),
-                0xd2 => _ = self.op_jp(.NC, .NN),
-                0xd8 => _ = self.op_ret(.C),
+                0xca => cycles += if (self.op_jp(.Z, .NN)) meta.extra_cycles else 0,
+                0xd0 => cycles += if (self.op_ret(.NC)) meta.extra_cycles else 0,
+                0xd2 => cycles += if (self.op_jp(.NC, .NN)) meta.extra_cycles else 0,
+                0xd8 => cycles += if (self.op_ret(.C)) meta.extra_cycles else 0,
                 0xd9 => _ = self.op_reti(),
-                0xda => _ = self.op_jp(.C, .NN),
+                0xda => cycles += if (self.op_jp(.C, .NN)) meta.extra_cycles else 0,
                 0xe9 => _ = self.op_jp(.None, .HL),
-                0xc4 => _ = self.op_call(.NZ, .NN),
-                0xcc => _ = self.op_call(.Z, .NN),
+                0xc4 => cycles += if (self.op_call(.NZ, .NN)) meta.extra_cycles else 0,
+                0xcc => cycles += if (self.op_call(.Z, .NN)) meta.extra_cycles else 0,
                 0xcd => _ = self.op_call(.None, .NN),
-                0xd4 => _ = self.op_call(.NC, .NN),
-                0xdc => _ = self.op_call(.C, .NN),
+                0xd4 => cycles += if (self.op_call(.NC, .NN)) meta.extra_cycles else 0,
+                0xdc => cycles += if (self.op_call(.C, .NN)) meta.extra_cycles else 0,
 
                 // stack
                 0xc1 => self.op_pop(.BC),
@@ -389,6 +393,7 @@ pub fn Cpu(comptime BusType: type) type {
                 0xcb => {
                     const prefix_opcode = self.bus.read(self.pc);
                     self.pc = self.pc +% 1;
+                    cycles = CB_ISA[prefix_opcode].cycles;
 
                     switch (prefix_opcode) {
                         0x00 => self.op_rlc(.B),
@@ -653,7 +658,7 @@ pub fn Cpu(comptime BusType: type) type {
                 else => std.debug.panic("Opcode 0x{x} not implemented\n", .{opcode}),
             }
 
-            return meta.cycles;
+            return cycles;
         }
 
         fn readOperand(self: *Self, operand: Operand) OperandData {
@@ -677,7 +682,7 @@ pub fn Cpu(comptime BusType: type) type {
                 .N => {
                     const data = self.bus.read(self.pc);
 
-                    self.pc += 1;
+                    self.pc +%= 1;
 
                     return .{ .u8 = data };
                 },
@@ -686,7 +691,7 @@ pub fn Cpu(comptime BusType: type) type {
                     const hi = self.bus.read(self.pc + 1);
                     const data = utils.join(hi, lo);
 
-                    self.pc += 2;
+                    self.pc +%= 2;
 
                     return .{ .u16 = data };
                 },
@@ -695,7 +700,7 @@ pub fn Cpu(comptime BusType: type) type {
                     const hi = self.bus.read(self.pc + 1);
                     const address = utils.join(hi, lo);
 
-                    self.pc += 2;
+                    self.pc +%= 2;
 
                     return .{ .u8 = self.bus.read(address) };
                 },
@@ -781,6 +786,57 @@ pub fn Cpu(comptime BusType: type) type {
             self.setHl(self.getHl() -% 1);
         }
 
+        fn op_ldh(self: *Self, target: Operand, source: Operand) void {
+            switch (target) {
+                .A => {
+                    switch (self.readOperand(source)) {
+                        .u8 => |offset| {
+                            const address = 0xFF00 + @as(u16, offset);
+                            const value = self.bus.read(address);
+                            self.writeOperand(target, .{ .u8 = value });
+                        },
+                        else => unreachable,
+                    }
+                },
+                else => {
+                    switch (self.readOperand(target)) {
+                        .u8 => |offset| {
+                            const address = 0xFF00 + @as(u16, offset);
+
+                            switch (self.readOperand(source)) {
+                                .u8 => |value| {
+                                    self.bus.write(address, value);
+                                },
+                                else => unreachable,
+                            }
+                        },
+                        else => unreachable,
+                    }
+                },
+            }
+        }
+
+        fn op_ldhl(self: *Self) void {
+            const operand = self.bus.read(self.pc);
+            self.pc +%= 1;
+
+            const lo: u8 = @truncate(self.sp);
+            const result_tuple = @addWithOverflow(lo, operand);
+            const is_overflow = result_tuple[1] == 1;
+
+            const offset_signed: i16 = @as(i8, @bitCast(operand));
+            const offset_u16: u16 = @bitCast(offset_signed);
+
+            const signed_result = self.sp +% offset_u16;
+
+            self.setFlag(.Z, false);
+            self.setFlag(.N, false);
+            self.setFlag(.H, (((lo & 0x0f) + (operand & 0x0f)) & 0x10) == 0x10);
+            self.setFlag(.C, is_overflow);
+
+            self.setHl(signed_result);
+        }
+
         // --- arithmetic
         fn op_inc(self: *Self, target: Operand) void {
             switch (self.readOperand(target)) {
@@ -826,12 +882,12 @@ pub fn Cpu(comptime BusType: type) type {
 
                     const result_tuple = @addWithOverflow(target_data, source_data);
                     const result = result_tuple[0];
-                    const overflow = result_tuple[1] == 1;
+                    const is_overflow = result_tuple[1] == 1;
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, ((target_data & 0xF) + (source_data & 0xF)) > 0xF);
-                    self.setFlag(.C, overflow);
+                    self.setFlag(.C, is_overflow);
 
                     self.writeOperand(target, .{ .u8 = result });
                 },
@@ -840,7 +896,7 @@ pub fn Cpu(comptime BusType: type) type {
                         .u8 => |source_data| {
                             const lo: u8 = @truncate(target_data);
                             const result_tuple = @addWithOverflow(lo, source_data);
-                            const overflow = result_tuple[1] == 1;
+                            const is_overflow = result_tuple[1] == 1;
 
                             const offset_signed: i16 = @as(i8, @bitCast(source_data));
                             const offset_u16: u16 = @bitCast(offset_signed);
@@ -850,18 +906,18 @@ pub fn Cpu(comptime BusType: type) type {
                             self.setFlag(.Z, false);
                             self.setFlag(.N, false);
                             self.setFlag(.H, ((lo & 0xF) + (source_data & 0xF)) > 0xF);
-                            self.setFlag(.C, overflow);
+                            self.setFlag(.C, is_overflow);
 
                             self.writeOperand(target, .{ .u16 = signed_result });
                         },
                         .u16 => |source_data| {
                             const result_tuple = @addWithOverflow(target_data, source_data);
                             const result = result_tuple[0];
-                            const overflow = result_tuple[1] == 1;
+                            const is_overflow = result_tuple[1] == 1;
 
                             self.setFlag(.N, false);
                             self.setFlag(.H, ((target_data & 0xFFF) + (source_data & 0xFFF)) > 0xFFF);
-                            self.setFlag(.C, overflow);
+                            self.setFlag(.C, is_overflow);
 
                             self.writeOperand(target, .{ .u16 = result });
                         },
@@ -880,12 +936,12 @@ pub fn Cpu(comptime BusType: type) type {
 
                     const result_tuple = @subWithOverflow(target_data, source_data);
                     const result = result_tuple[0];
-                    const overflow = result_tuple[1] == 1;
+                    const is_overflow = result_tuple[1] == 1;
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, true);
                     self.setFlag(.H, (target_data & 0x0F) < (source_data & 0x0F));
-                    self.setFlag(.C, overflow);
+                    self.setFlag(.C, is_overflow);
 
                     self.writeOperand(target, .{ .u8 = result });
                 },
@@ -1135,8 +1191,8 @@ pub fn Cpu(comptime BusType: type) type {
         }
 
         fn op_reti(self: *Self) void {
-            _ = self;
-            unreachable;
+            self.op_ei();
+            _ = self.op_ret(.None);
         }
 
         fn op_call(self: *Self, condition: Condition, operand: Operand) bool {
@@ -1250,14 +1306,14 @@ pub fn Cpu(comptime BusType: type) type {
             switch (op_data) {
                 .u8 => |data| {
                     const old_carry: u8 = @intFromBool(self.getFlag(.C));
-                    const new_carry = (data & 0x80) != 0;
+                    const has_carry = (data & 0x80) != 0;
 
                     const result = (data << 1) | old_carry;
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1271,14 +1327,14 @@ pub fn Cpu(comptime BusType: type) type {
             switch (op_data) {
                 .u8 => |data| {
                     const old_carry: u8 = @intFromBool(self.getFlag(.C));
-                    const new_carry = (data & 1) != 0;
+                    const has_carry = (data & 1) != 0;
 
                     const result = (data >> 1) | (old_carry << 7);
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1291,14 +1347,14 @@ pub fn Cpu(comptime BusType: type) type {
 
             switch (op_data) {
                 .u8 => |data| {
-                    const new_carry = (data & 0x80) != 0;
+                    const has_carry = (data & 0x80) != 0;
 
                     const result = (data << 1) | (data >> 7);
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1311,14 +1367,14 @@ pub fn Cpu(comptime BusType: type) type {
 
             switch (op_data) {
                 .u8 => |data| {
-                    const new_carry = (data & 1) != 0;
+                    const has_carry = (data & 1) != 0;
 
                     const result = (data >> 1) | (data << 7);
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1350,13 +1406,13 @@ pub fn Cpu(comptime BusType: type) type {
 
             switch (op_data) {
                 .u8 => |data| {
-                    const new_carry = (data & 0x80) != 0;
+                    const has_carry = (data & 0x80) != 0;
                     const result = data << 1;
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1369,13 +1425,13 @@ pub fn Cpu(comptime BusType: type) type {
 
             switch (op_data) {
                 .u8 => |data| {
-                    const new_carry = (data & 1) != 0;
+                    const has_carry = (data & 1) != 0;
                     const result = data >> 1;
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1388,13 +1444,13 @@ pub fn Cpu(comptime BusType: type) type {
 
             switch (op_data) {
                 .u8 => |data| {
-                    const new_carry = (data & 1) != 0;
+                    const has_carry = (data & 1) != 0;
                     const result = (data >> 1) | (data & 0x80);
 
                     self.setFlag(.Z, result == 0);
                     self.setFlag(.N, false);
                     self.setFlag(.H, false);
-                    self.setFlag(.C, new_carry);
+                    self.setFlag(.C, has_carry);
 
                     self.writeOperand(operand, .{ .u8 = result });
                 },
@@ -1477,7 +1533,6 @@ const TestCase = struct {
 };
 
 test "sm83 v1" {
-    std.debug.print("sm83 v1 test started\n", .{});
     const test_dir = config.test_dir orelse {
         std.debug.print("test_dir is null, skipping sm83 v1 tests\n", .{});
         return;
@@ -1499,8 +1554,6 @@ test "sm83 v1" {
             if (!std.mem.eql(u8, entry.name, filter)) continue;
         }
 
-        std.debug.print("Processing file: {s}\n", .{entry.name});
-
         const file_content = try dir.readFileAlloc(allocator, entry.name, 1024 * 1024 * 10);
         defer allocator.free(file_content);
 
@@ -1510,8 +1563,6 @@ test "sm83 v1" {
         defer parsed.deinit();
 
         for (parsed.value) |case| {
-            std.debug.print("Running test case: {s}\n", .{case.name});
-
             // TODO: test cycles
 
             var bus = FlatBus.init();
