@@ -31,7 +31,7 @@ const AppState = struct {
     display_view: sg.View,
     display_sampler: sg.Sampler,
 
-    show_gameboy: bool = true,
+    show_emulator: bool = true,
     show_registers: bool = true,
 
     fn init(allocator: std.mem.Allocator) !*AppState {
@@ -136,16 +136,18 @@ export fn frame() void {
 
     if (ig.igBeginMainMenuBar()) {
         if (ig.igBeginMenu("View")) {
-            _ = ig.igMenuItemBoolPtr("GameBoy", "", &state.show_gameboy, true);
+            _ = ig.igMenuItemBoolPtr("Emulator", "", &state.show_emulator, true);
             _ = ig.igMenuItemBoolPtr("Registers", "", &state.show_registers, true);
             ig.igEndMenu();
         }
         ig.igEndMainMenuBar();
     }
 
-    if (state.show_gameboy) {
+    if (state.show_emulator) {
+        ig.igSetNextWindowPos(.{ .x = 10, .y = 30 }, ig.ImGuiCond_FirstUseEver);
         ig.igSetNextWindowSize(.{ .x = 340, .y = 340 }, ig.ImGuiCond_FirstUseEver);
-        if (ig.igBegin("GameBoy", &state.show_gameboy, ig.ImGuiWindowFlags_NoScrollbar)) {
+
+        if (ig.igBegin("Emulator", &state.show_emulator, ig.ImGuiWindowFlags_NoScrollbar)) {
             const w_size = ig.igGetContentRegionAvail();
             const aspect = 160.0 / 144.0;
             var draw_w = w_size.x;
@@ -163,8 +165,9 @@ export fn frame() void {
     }
 
     if (state.show_registers) {
-        ig.igSetNextWindowPos(.{ .x = 10, .y = 30 }, ig.ImGuiCond_FirstUseEver);
+        ig.igSetNextWindowPos(.{ .x = 340 + 20, .y = 30 }, ig.ImGuiCond_FirstUseEver);
         ig.igSetNextWindowSize(.{ .x = 200, .y = 250 }, ig.ImGuiCond_FirstUseEver);
+
         if (ig.igBegin("Registers", &state.show_registers, 0)) {
             ig.igText("PC: 0x%04X", state.cpu.pc);
             ig.igText("SP: 0x%04X", state.cpu.sp);
