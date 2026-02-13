@@ -20,7 +20,7 @@ pub const Joypad = struct {
                 else
                     0xff;
             },
-            else => std.debug.panic("joypad: invalid read adress: 0x{x}\n", .{address}),
+            else => std.debug.panic("joypad: invalid read address: 0x{x}\n", .{address}),
         };
     }
 

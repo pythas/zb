@@ -100,7 +100,7 @@ pub const Apu = struct {
 
             0xff27...0xff2f => 0xff,
 
-            else => std.debug.panic("apu: invalid read adress: 0x{x}\n", .{address}),
+            else => std.debug.panic("apu: invalid read address: 0x{x}\n", .{address}),
         };
     }
 
@@ -131,7 +131,7 @@ pub const Apu = struct {
             0xff26 => self.nr52 = value,
 
             0xff27...0xff2f => {},
-            else => std.debug.panic("gpu: invalid write address: 0x{x}\n", .{address}),
+            else => std.debug.panic("apu: invalid write address: 0x{x}\n", .{address}),
         }
     }
 };

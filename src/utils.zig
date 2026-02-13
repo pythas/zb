@@ -11,7 +11,7 @@ pub inline fn split(value: u16) struct { hi: u8, lo: u8 } {
     };
 }
 
-pub inline fn toRelativeOffset(value: u8) u16 {
+pub inline fn signExtend(value: u8) u16 {
     return @bitCast(@as(i16, @as(i8, @bitCast(value))));
 }
 

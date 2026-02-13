@@ -840,7 +840,7 @@ pub fn Cpu(comptime BusType: type) type {
                             const hi = self.bus.read(self.pc + 1);
                             const address = utils.join(hi, lo);
 
-                            self.pc += 2;
+                            self.pc +%= 2;
 
                             self.bus.write(address, data);
                         },
@@ -849,7 +849,7 @@ pub fn Cpu(comptime BusType: type) type {
                             const hi = self.bus.read(self.pc + 1);
                             const address = utils.join(hi, lo);
 
-                            self.pc += 2;
+                            self.pc +%= 2;
 
                             self.bus.write(address, @truncate(data));
                             self.bus.write(address + 1, @truncate(data >> 8));
@@ -1234,7 +1234,7 @@ pub fn Cpu(comptime BusType: type) type {
                 else => unreachable,
             };
 
-            const offset = utils.toRelativeOffset(data);
+            const offset = utils.signExtend(data);
 
             const should_jump = switch (condition) {
                 .Z => self.getFlag(.Z),

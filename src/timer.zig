@@ -16,8 +16,7 @@ pub const Timer = struct {
     pub fn cycle(self: *Self, cycles: u8) ?cpu.Interrupt {
         _ = self;
         _ = cycles;
-        const interrupt: cpu.Interrupt = undefined;
-        return interrupt;
+        return null;
     }
 
     pub fn read(self: *const Self, address: u16) u8 {
@@ -26,7 +25,7 @@ pub const Timer = struct {
             0xff05 => self.tima,
             0xff06 => self.tma,
             0xff07 => self.tac,
-            else => std.debug.panic("timer: invalid read adress: 0x{x}\n", .{address}),
+            else => std.debug.panic("timer: invalid read address: 0x{x}\n", .{address}),
         };
     }
 
