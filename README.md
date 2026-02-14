@@ -2,21 +2,35 @@
 
 A Game Boy emulator in Zig.
 
+## Run
+
+```bash
+zig build run -Doptimize=ReleaseFast
+```
+
+
 ## Tests
 
 ```bash
 cd tests
 git clone https://github.com/SingleStepTests/sm83.git
+git clone https://github.com/retrio/gb-test-roms.git
 ```
 
-Run all single step CPU tests:
+Run all tests
 
 ```bash
-zig build test -Dtest-dir=tests/sm83/v1/
+zig build test --summary all
 ```
 
-Run specific test:
+Run sm83 tests:
 
 ```bash
-zig build test -Dtest-dir=tests/sm83/v1/ -Dtest-filter=00.json
+zig build test -Dtest-filter=sm83
+```
+
+Run blargg tests:
+
+```bash
+zig build test -Dtest-filter=blargg
 ```

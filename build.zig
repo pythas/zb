@@ -49,18 +49,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match the filter");
+
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
+        .filters = if (test_filter) |f| &.{f} else &.{},
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
-
-    const test_dir = b.option([]const u8, "test-dir", "Path to GameboyCPUTests v2 directory");
-    const test_filter = b.option([]const u8, "test-filter", "Filter for test files (e.g. 00.json)");
-    const options = b.addOptions();
-    options.addOption(?[]const u8, "test_dir", test_dir);
-    options.addOption(?[]const u8, "test_filter", test_filter);
-    exe_unit_tests.root_module.addOptions("config", options);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_exe_unit_tests.step);
