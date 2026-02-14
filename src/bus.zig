@@ -73,6 +73,14 @@ pub const Bus = struct {
         @memcpy(self.bootrom[0..data.len], data);
     }
 
+    pub fn loadRom(self: *Self, data: []u8) void {
+        if (data.len > self.rom.len) {
+            std.debug.panic("bus: rom data too large", .{});
+        }
+
+        @memcpy(self.rom[0..data.len], data);
+    }
+
     pub fn read(self: *const Self, address: u16) u8 {
         return switch (address) {
             0x0000...0x00ff => {

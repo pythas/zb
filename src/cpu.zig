@@ -66,8 +66,7 @@ pub fn Cpu(comptime BusType: type) type {
         sp: u16 = 0,
         pc: u16 = 0,
         ime: bool = false,
-        ime_scheduled: bool = false,
-        enable_ime_next_cycle: bool = false,
+        ei_delay: u8 = 0,
         halted: bool = false,
 
         const Self = @This();
@@ -169,22 +168,15 @@ pub fn Cpu(comptime BusType: type) type {
                 self.bus.intf |= @intFromEnum(interrupt);
             }
 
+            if (self.ei_delay > 0) {
+                self.ei_delay -= 1;
+                if (self.ei_delay == 0) {
+                    self.ime = true;
+                }
+            }
+
             self.checkHaltState();
             self.handleInterrupts();
-
-            // TODO: verify this
-            if (self.enable_ime_next_cycle) {
-                // enable IME next cycle
-                if (self.ime_scheduled) {
-                    self.ime = true;
-                    self.ime_scheduled = false;
-                    self.enable_ime_next_cycle = false;
-                } else {
-                    self.ime_scheduled = true;
-                }
-            } else {
-                self.ime_scheduled = false;
-            }
         }
 
         pub fn checkHaltState(self: *Self) void {
@@ -1339,11 +1331,11 @@ pub fn Cpu(comptime BusType: type) type {
         // --- misc
         fn op_di(self: *Self) void {
             self.ime = false;
-            self.ime_scheduled = false;
+            self.ei_delay = 0;
         }
 
         fn op_ei(self: *Self) void {
-            self.ime_scheduled = true;
+            self.ei_delay = 2;
         }
 
         fn op_halt(self: *Self) void {
@@ -1629,15 +1621,13 @@ const TestCase = struct {
 };
 
 test "sm83 v1" {
-    const test_dir = config.test_dir orelse {
-        std.debug.print("test_dir is null, skipping sm83 v1 tests\n", .{});
-        return;
-    };
+    const allocator = std.testing.allocator;
 
-    const allocator = testing.allocator;
-    var dir = std.fs.cwd().openDir(test_dir, .{ .iterate = true }) catch |err| {
-        std.debug.print("Failed to open test_dir: {}\n", .{err});
-        return err;
+    const test_path = "tests/sm83/v1";
+
+    var dir = std.fs.cwd().openDir(test_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Skipping sm83 tests: could not open '{s}': {}\n", .{ test_path, err });
+        return;
     };
     defer dir.close();
 
@@ -1645,10 +1635,6 @@ test "sm83 v1" {
     while (try it.next()) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".json")) continue;
-
-        if (config.test_filter) |filter| {
-            if (!std.mem.eql(u8, entry.name, filter)) continue;
-        }
 
         const file_content = try dir.readFileAlloc(allocator, entry.name, 1024 * 1024 * 10);
         defer allocator.free(file_content);
@@ -1701,6 +1687,86 @@ test "sm83 v1" {
 
                 try testing.expectEqual(value, bus.read(address));
             }
+        }
+    }
+}
+
+test "blargg cpu_instrs individual" {
+    const allocator = std.testing.allocator;
+
+    const roms_dir_path = "tests/gb-test-roms/cpu_instrs/individual";
+
+    var dir = std.fs.cwd().openDir(roms_dir_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Skipping Blargg tests: could not open '{s}': {}\n", .{ roms_dir_path, err });
+        return;
+    };
+    defer dir.close();
+
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".gb")) continue;
+
+        std.debug.print("Running Blargg Test: {s} ... ", .{entry.name});
+
+        var gpu = Gpu.init();
+        var apu = Apu.init();
+        var joypad = Joypad.init();
+        var timer = Timer.init();
+        var bus = Bus.init(&gpu, &apu, &joypad, &timer);
+        var cpu = Cpu(Bus).init(&bus);
+
+        const rom_path = try std.fs.path.join(allocator, &[_][]const u8{ roms_dir_path, entry.name });
+        defer allocator.free(rom_path);
+
+        const file = try std.fs.cwd().openFile(rom_path, .{});
+        const rom_bytes = try file.readToEndAlloc(allocator, 4 * 1024 * 1024); // Max 4MB
+        defer allocator.free(rom_bytes);
+
+        bus.loadRom(rom_bytes);
+
+        cpu.pc = 0x100;
+        cpu.sp = 0xFFFE;
+        cpu.a = 0x01;
+        cpu.f = 0xB0;
+        cpu.b = 0x00;
+        cpu.c = 0x13;
+        cpu.d = 0x00;
+        cpu.e = 0xD8;
+        cpu.h = 0x01;
+        cpu.l = 0x4D;
+        bus.disable_bootrom = 1;
+
+        var output = std.ArrayList(u8).empty;
+        defer output.deinit(allocator);
+
+        const max_cycles = 20_000_000;
+        var test_passed = false;
+
+        while (cpu.clock.t < max_cycles) {
+            cpu.cycle();
+
+            if (bus.read(0xFF02) == 0x81) {
+                const char = bus.read(0xFF01);
+                // std.debug.print("{c}", .{char});
+                try output.append(allocator, char);
+
+                bus.write(0xFF02, 0x00);
+
+                if (std.mem.indexOf(u8, output.items, "Passed") != null) {
+                    test_passed = true;
+                    break;
+                }
+                if (std.mem.indexOf(u8, output.items, "Failed") != null) {
+                    break;
+                }
+            }
+        }
+
+        if (test_passed) {
+            std.debug.print("PASSED\n", .{});
+        } else {
+            std.debug.print("FAILED\nOutput:\n{s}\n", .{output.items});
+            return error.TestFailed;
         }
     }
 }

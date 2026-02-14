@@ -7,6 +7,9 @@ pub const Timer = struct {
     tma: u8 = 0,
     tac: u8 = 0,
 
+    div_cycle: u16 = 0,
+    tima_cycle: u32 = 0,
+
     const Self = @This();
 
     pub fn init() Self {
@@ -18,9 +21,40 @@ pub const Timer = struct {
     }
 
     pub fn cycle(self: *Self, cycles: u8) ?cpu.Interrupt {
-        _ = self;
-        _ = cycles;
-        return null;
+        var interrupt: ?cpu.Interrupt = null;
+
+        // DIV increments every 256 T-cycles (16384Hz)
+        self.div_cycle += cycles;
+        if (self.div_cycle >= 256) {
+            self.div_cycle -= 256;
+            self.div +%= 1;
+        }
+
+        // TIMA increments at rate specified by TAC
+        if ((self.tac & 0x04) != 0) {
+            self.tima_cycle += cycles;
+
+            const threshold: u32 = switch (self.tac & 0x03) {
+                0x00 => 1024, // 4096Hz
+                0x01 => 16, // 262144Hz
+                0x02 => 64, // 65536Hz
+                0x03 => 256, // 16384Hz
+                else => unreachable,
+            };
+
+            if (self.tima_cycle >= threshold) {
+                self.tima_cycle -= threshold;
+
+                if (self.tima == 0xFF) {
+                    self.tima = self.tma;
+                    interrupt = .Timer;
+                } else {
+                    self.tima += 1;
+                }
+            }
+        }
+
+        return interrupt;
     }
 
     pub fn read(self: *const Self, address: u16) u8 {
