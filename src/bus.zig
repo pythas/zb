@@ -5,7 +5,6 @@ const Joypad = @import("joypad.zig").Joypad;
 const Timer = @import("timer.zig").Timer;
 
 pub const Bus = struct {
-    // TODO: should we use a packed struct instead?
     gpu: *Gpu,
     apu: *Apu,
     joypad: *Joypad,
@@ -41,6 +40,29 @@ pub const Bus = struct {
             .joypad = joypad,
             .timer = timer,
         };
+    }
+
+    pub fn reset(self: *Self) void {
+        const gpu = self.gpu;
+        const apu = self.apu;
+        const joypad = self.joypad;
+        const timer = self.timer;
+        const rom = self.rom;
+        const bootrom = self.bootrom;
+
+        self.* = .{
+            .gpu = gpu,
+            .apu = apu,
+            .joypad = joypad,
+            .timer = timer,
+            .rom = rom,
+            .bootrom = bootrom,
+        };
+
+        self.gpu.reset();
+        self.apu.reset();
+        self.joypad.reset();
+        self.timer.reset();
     }
 
     pub fn loadBootrom(self: *Self, data: []u8) void {

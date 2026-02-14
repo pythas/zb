@@ -13,6 +13,10 @@ pub const Timer = struct {
         return .{};
     }
 
+    pub fn reset(self: *Self) void {
+        self.* = .{};
+    }
+
     pub fn cycle(self: *Self, cycles: u8) ?cpu.Interrupt {
         _ = self;
         _ = cycles;

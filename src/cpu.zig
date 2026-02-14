@@ -55,41 +55,30 @@ pub fn Cpu(comptime BusType: type) type {
     return struct {
         clock: Clock = .{},
         bus: *BusType,
-        a: u8,
-        f: u8,
-        b: u8,
-        c: u8,
-        d: u8,
-        e: u8,
-        h: u8,
-        l: u8,
-        sp: u16,
-        pc: u16,
-        ime: bool,
-        ime_scheduled: bool,
-        enable_ime_next_cycle: bool,
-        halted: bool,
+        a: u8 = 0,
+        f: u8 = 0,
+        b: u8 = 0,
+        c: u8 = 0,
+        d: u8 = 0,
+        e: u8 = 0,
+        h: u8 = 0,
+        l: u8 = 0,
+        sp: u16 = 0,
+        pc: u16 = 0,
+        ime: bool = false,
+        ime_scheduled: bool = false,
+        enable_ime_next_cycle: bool = false,
+        halted: bool = false,
 
         const Self = @This();
 
         pub fn init(bus: *BusType) Self {
-            return .{
-                .bus = bus,
-                .a = 0,
-                .f = 0,
-                .b = 0,
-                .c = 0,
-                .d = 0,
-                .e = 0,
-                .h = 0,
-                .l = 0,
-                .sp = 0,
-                .pc = 0,
-                .ime = false,
-                .ime_scheduled = false,
-                .enable_ime_next_cycle = false,
-                .halted = false,
-            };
+            return .{ .bus = bus };
+        }
+
+        pub fn reset(self: *Self) void {
+            const bus = self.bus;
+            self.* = .{ .bus = bus };
         }
 
         pub inline fn getAf(self: Self) u16 {

@@ -72,6 +72,10 @@ pub const Apu = struct {
         return .{};
     }
 
+    pub fn reset(self: *Self) void {
+        self.* = .{};
+    }
+
     pub fn read(self: *const Self, address: u16) u8 {
         return switch (address) {
             0xff10...0xff14 => self.channels[0].read(@truncate(address - 0xff10)),

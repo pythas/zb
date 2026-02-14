@@ -33,6 +33,10 @@ pub const Gpu = struct {
         return .{};
     }
 
+    pub fn reset(self: *Self) void {
+        self.* = .{};
+    }
+
     pub inline fn getMode(self: Self) u8 {
         return self.stat & 0b11;
     }

@@ -16,6 +16,12 @@ const Timer = @import("timer.zig").Timer;
 const Cpu = @import("cpu.zig").Cpu;
 const Bus = @import("bus.zig").Bus;
 
+const OamWindow = @import("ui/oam.zig").OamWindow;
+const EmulatorWindow = @import("ui/emulator.zig").EmulatorWindow;
+const RegisterWindow = @import("ui/register.zig").RegisterWindow;
+const TileWindow = @import("ui/map.zig").MapWindow;
+const UiState = @import("ui/state.zig").UiState;
+
 const AppState = struct {
     allocator: std.mem.Allocator,
 
@@ -26,13 +32,13 @@ const AppState = struct {
     bus: Bus,
     cpu: Cpu(Bus),
 
-    pass_action: sg.PassAction,
-    display_image: sg.Image,
-    display_view: sg.View,
-    display_sampler: sg.Sampler,
+    ui: UiState,
+    emulator_window: EmulatorWindow,
+    register_window: RegisterWindow,
+    oam_window: OamWindow,
+    tile_window: TileWindow,
 
-    show_emulator: bool = true,
-    show_registers: bool = true,
+    pass_action: sg.PassAction,
 
     fn init(allocator: std.mem.Allocator) !*AppState {
         const ptr = try allocator.create(AppState);
@@ -44,10 +50,14 @@ const AppState = struct {
             .timer = Timer.init(),
             .bus = undefined,
             .cpu = undefined,
+
+            .ui = UiState.init(),
             .pass_action = .{},
-            .display_image = .{},
-            .display_view = .{},
-            .display_sampler = .{},
+
+            .emulator_window = EmulatorWindow.init(),
+            .register_window = RegisterWindow.init(),
+            .oam_window = OamWindow.init(),
+            .tile_window = TileWindow.init(),
         };
 
         ptr.bus = Bus.init(&ptr.gpu, &ptr.apu, &ptr.joypad, &ptr.timer);
@@ -59,6 +69,11 @@ const AppState = struct {
         allocator.free(bootrom);
 
         return ptr;
+    }
+
+    fn reset(self: *AppState) !void {
+        self.bus.reset();
+        self.cpu.reset();
     }
 };
 
@@ -86,25 +101,6 @@ export fn init() void {
         std.debug.panic("Failed to init emulator: {}", .{err});
     };
 
-    const img_desc = sg.ImageDesc{
-        .width = 160,
-        .height = 144,
-        .pixel_format = .RGBA8,
-        .usage = .{ .stream_update = true },
-        .label = "gb-screen",
-    };
-    state.display_image = sg.makeImage(img_desc);
-
-    state.display_view = sg.makeView(.{
-        .texture = .{ .image = state.display_image },
-    });
-
-    const smp_desc = sg.SamplerDesc{
-        .min_filter = .NEAREST,
-        .mag_filter = .NEAREST,
-    };
-    state.display_sampler = sg.makeSampler(smp_desc);
-
     state.pass_action = .{};
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
@@ -123,10 +119,6 @@ export fn frame() void {
     }
     state.gpu.frame_ready = false;
 
-    var data_desc = sg.ImageData{};
-    data_desc.mip_levels[0] = sg.asRange(&state.gpu.video_buffer);
-    sg.updateImage(state.display_image, data_desc);
-
     simgui.newFrame(.{
         .width = @intFromFloat(width),
         .height = @intFromFloat(height),
@@ -134,53 +126,11 @@ export fn frame() void {
         .dpi_scale = sapp.dpiScale(),
     });
 
-    if (ig.igBeginMainMenuBar()) {
-        if (ig.igBeginMenu("View")) {
-            _ = ig.igMenuItemBoolPtr("Emulator", "", &state.show_emulator, true);
-            _ = ig.igMenuItemBoolPtr("Registers", "", &state.show_registers, true);
-            ig.igEndMenu();
-        }
-        ig.igEndMainMenuBar();
-    }
-
-    if (state.show_emulator) {
-        ig.igSetNextWindowPos(.{ .x = 10, .y = 30 }, ig.ImGuiCond_FirstUseEver);
-        ig.igSetNextWindowSize(.{ .x = 340, .y = 340 }, ig.ImGuiCond_FirstUseEver);
-
-        if (ig.igBegin("Emulator", &state.show_emulator, ig.ImGuiWindowFlags_NoScrollbar)) {
-            const w_size = ig.igGetContentRegionAvail();
-            const aspect = 160.0 / 144.0;
-            var draw_w = w_size.x;
-            var draw_h = w_size.x / aspect;
-            if (draw_h > w_size.y) {
-                draw_h = w_size.y;
-                draw_w = w_size.y * aspect;
-            }
-            ig.igSetCursorPosX((w_size.x - draw_w) * 0.5 + ig.igGetCursorPosX());
-            ig.igSetCursorPosY((w_size.y - draw_h) * 0.5 + ig.igGetCursorPosY());
-
-            ig.igImage(.{ ._TexID = simgui.imtextureidWithSampler(state.display_view, state.display_sampler) }, .{ .x = draw_w, .y = draw_h });
-        }
-        ig.igEnd();
-    }
-
-    if (state.show_registers) {
-        ig.igSetNextWindowPos(.{ .x = 340 + 20, .y = 30 }, ig.ImGuiCond_FirstUseEver);
-        ig.igSetNextWindowSize(.{ .x = 200, .y = 250 }, ig.ImGuiCond_FirstUseEver);
-
-        if (ig.igBegin("Registers", &state.show_registers, 0)) {
-            ig.igText("PC: 0x%04X", state.cpu.pc);
-            ig.igText("SP: 0x%04X", state.cpu.sp);
-            ig.igSeparator();
-            ig.igText("A: 0x%02X F: 0x%02X", state.cpu.a, state.cpu.f);
-            ig.igText("B: 0x%02X C: 0x%02X", state.cpu.b, state.cpu.c);
-            ig.igText("D: 0x%02X E: 0x%02X", state.cpu.d, state.cpu.e);
-            ig.igText("H: 0x%02X L: 0x%02X", state.cpu.h, state.cpu.l);
-            ig.igSeparator();
-            ig.igText("Flags: %s%s%s%s", if (state.cpu.getFlag(.Z)) "Z" else "-", if (state.cpu.getFlag(.N)) "N" else "-", if (state.cpu.getFlag(.H)) "H" else "-", if (state.cpu.getFlag(.C)) "C" else "-");
-        }
-        ig.igEnd();
-    }
+    drawMainMenu();
+    state.emulator_window.draw(&state.ui.emulator, &state.bus);
+    state.register_window.draw(&state.ui.registers, &state.cpu);
+    state.oam_window.draw(&state.ui.oam, &state.bus);
+    state.tile_window.draw(&state.ui.tiles, &state.bus);
 
     sg.beginPass(.{ .action = state.pass_action, .swapchain = sglue.swapchain() });
     simgui.render();
@@ -195,6 +145,30 @@ export fn event(ev: [*c]const sapp.Event) void {
 export fn cleanup() void {
     simgui.shutdown();
     sg.shutdown();
+
+    state.emulator_window.deinit();
+    state.tile_window.deinit();
+}
+
+fn drawMainMenu() void {
+    if (ig.igBeginMainMenuBar()) {
+        if (ig.igBeginMenu("System")) {
+            if (ig.igMenuItem("Reset")) {
+                state.reset() catch |err| {
+                    std.debug.print("Failed to reset emulator: {}\n", .{err});
+                };
+            }
+            ig.igEndMenu();
+        }
+        if (ig.igBeginMenu("View")) {
+            _ = ig.igMenuItemBoolPtr("Emulator", "", &state.ui.emulator.visible, true);
+            _ = ig.igMenuItemBoolPtr("Registers", "", &state.ui.registers.visible, true);
+            _ = ig.igMenuItemBoolPtr("OAM Viewer", "", &state.ui.oam.visible, true);
+            _ = ig.igMenuItemBoolPtr("Background Map", "", &state.ui.tiles.visible, true);
+            ig.igEndMenu();
+        }
+        ig.igEndMainMenuBar();
+    }
 }
 
 pub fn main() void {
@@ -204,7 +178,7 @@ pub fn main() void {
         .cleanup_cb = cleanup,
         .event_cb = event,
         .window_title = "zb",
-        .width = 800,
+        .width = 1000,
         .height = 600,
         .icon = .{ .sokol_default = true },
         .logger = .{ .func = slog.func },
