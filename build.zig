@@ -50,11 +50,18 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const test_filter = b.option([]const u8, "test-filter", "Skip tests that do not match the filter");
+    const sm83_filter = b.option([]const u8, "sm83-filter", "Only run SM83 tests matching this filter");
+    const blargg_filter = b.option([]const u8, "blargg-filter", "Only run Blargg tests matching this filter");
+
+    const test_options = b.addOptions();
+    test_options.addOption(?[]const u8, "sm83_filter", sm83_filter);
+    test_options.addOption(?[]const u8, "blargg_filter", blargg_filter);
 
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
         .filters = if (test_filter) |f| &.{f} else &.{},
     });
+    exe_unit_tests.root_module.addOptions("config", test_options);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

@@ -68,6 +68,10 @@ const AppState = struct {
         ptr.bus.loadBootrom(bootrom);
         allocator.free(bootrom);
 
+        const rom = try readBinaryFile(allocator, "roms/tetris.gb");
+        ptr.bus.loadRom(rom);
+        allocator.free(rom);
+
         return ptr;
     }
 

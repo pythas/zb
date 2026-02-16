@@ -122,11 +122,9 @@ pub const Bus = struct {
             0x0000...0x00ff => {
                 if (self.disable_bootrom == 0) {
                     self.bootrom[address] = value;
-                } else {
-                    self.rom[address] = value;
                 }
             },
-            0x0100...0x7fff => self.rom[address] = value, // TODO: handle memory bank switching
+            0x0100...0x7fff => {},
             0x8000...0x9fff => self.gpu.write(address, value),
             0xa000...0xbfff => self.eram[address - 0xa000] = value,
             0xc000...0xcfff => self.wram_0[address - 0xc000] = value,

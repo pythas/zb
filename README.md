@@ -20,17 +20,17 @@ git clone https://github.com/retrio/gb-test-roms.git
 Run all tests
 
 ```bash
-zig build test --summary all
+zig build test -Doptimize=ReleaseSafe --summary all
 ```
 
 Run sm83 tests:
 
 ```bash
-zig build test -Dtest-filter=sm83
+zig build test -Doptimize=ReleaseSafe -Dtest-filter=sm83
 ```
 
 Run blargg tests:
 
 ```bash
-zig build test -Dtest-filter=blargg
+zig build test -Doptimize=ReleaseSafe -Dtest-filter=blargg
 ```

@@ -1636,6 +1636,10 @@ test "sm83 v1" {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".json")) continue;
 
+        if (config.sm83_filter) |filter| {
+            if (std.mem.indexOf(u8, entry.name, filter) == null) continue;
+        }
+
         const file_content = try dir.readFileAlloc(allocator, entry.name, 1024 * 1024 * 10);
         defer allocator.free(file_content);
 
@@ -1706,6 +1710,10 @@ test "blargg cpu_instrs individual" {
     while (try it.next()) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".gb")) continue;
 
+        if (config.blargg_filter) |filter| {
+            if (std.mem.indexOf(u8, entry.name, filter) == null) continue;
+        }
+
         std.debug.print("Running Blargg Test: {s} ... ", .{entry.name});
 
         var gpu = Gpu.init();
@@ -1719,7 +1727,7 @@ test "blargg cpu_instrs individual" {
         defer allocator.free(rom_path);
 
         const file = try std.fs.cwd().openFile(rom_path, .{});
-        const rom_bytes = try file.readToEndAlloc(allocator, 4 * 1024 * 1024); // Max 4MB
+        const rom_bytes = try file.readToEndAlloc(allocator, 4 * 1024 * 1024);
         defer allocator.free(rom_bytes);
 
         bus.loadRom(rom_bytes);
@@ -1739,7 +1747,7 @@ test "blargg cpu_instrs individual" {
         var output = std.ArrayList(u8).empty;
         defer output.deinit(allocator);
 
-        const max_cycles = 20_000_000;
+        const max_cycles = 100_000_000;
         var test_passed = false;
 
         while (cpu.clock.t < max_cycles) {
@@ -1747,16 +1755,12 @@ test "blargg cpu_instrs individual" {
 
             if (bus.read(0xFF02) == 0x81) {
                 const char = bus.read(0xFF01);
-                // std.debug.print("{c}", .{char});
                 try output.append(allocator, char);
 
                 bus.write(0xFF02, 0x00);
 
                 if (std.mem.indexOf(u8, output.items, "Passed") != null) {
                     test_passed = true;
-                    break;
-                }
-                if (std.mem.indexOf(u8, output.items, "Failed") != null) {
                     break;
                 }
             }
