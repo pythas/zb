@@ -143,13 +143,21 @@ export fn frame() void {
 }
 
 export fn event(ev: [*c]const sapp.Event) void {
-    if (simgui.handleEvent(ev.*)) {
-        return;
-    }
+    _ = simgui.handleEvent(ev.*);
+
+    const io = ig.igGetIO();
 
     switch (ev.*.type) {
-        .KEY_DOWN => handleInput(ev.*.key_code, true),
-        .KEY_UP => handleInput(ev.*.key_code, false),
+        .KEY_DOWN => {
+            if (!io.*.WantCaptureKeyboard) {
+                handleInput(ev.*.key_code, true);
+            }
+        },
+        .KEY_UP => {
+            if (!io.*.WantCaptureKeyboard) {
+                handleInput(ev.*.key_code, false);
+            }
+        },
         else => {},
     }
 }

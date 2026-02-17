@@ -26,3 +26,15 @@ pub inline fn setBit(value: u8, bit: u3) u8 {
 pub inline fn clearBit(value: u8, bit: u3) u8 {
     return value & ~(@as(u8, 1) << bit);
 }
+
+pub inline fn getTilePixelColor(byte1: u8, byte2: u8, x: u3) u8 {
+    const bit_mask = @as(u8, 1) << (7 - x);
+    const lo = if (byte1 & bit_mask != 0) @as(u8, 1) else 0;
+    const hi = if (byte2 & bit_mask != 0) @as(u8, 2) else 0;
+
+    return hi | lo;
+}
+
+pub inline fn getPaletteColor(palette: u8, color_idx: u8) u8 {
+    return (palette >> (@as(u3, @truncate(color_idx)) * 2)) & 0b11;
+}
