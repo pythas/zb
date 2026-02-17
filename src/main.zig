@@ -143,7 +143,15 @@ export fn frame() void {
 }
 
 export fn event(ev: [*c]const sapp.Event) void {
-    _ = simgui.handleEvent(ev.*);
+    if (simgui.handleEvent(ev.*)) {
+        return;
+    }
+
+    switch (ev.*.type) {
+        .KEY_DOWN => handleInput(ev.*.key_code, true),
+        .KEY_UP => handleInput(ev.*.key_code, false),
+        else => {},
+    }
 }
 
 export fn cleanup() void {
@@ -152,6 +160,20 @@ export fn cleanup() void {
 
     state.emulator_window.deinit();
     state.tile_window.deinit();
+}
+
+fn handleInput(key: sapp.Keycode, is_down: bool) void {
+    switch (key) {
+        .Z => state.joypad.setButton(.A, is_down),
+        .X => state.joypad.setButton(.B, is_down),
+        .ENTER => state.joypad.setButton(.Start, is_down),
+        .SPACE => state.joypad.setButton(.Select, is_down),
+        .UP => state.joypad.setButton(.Up, is_down),
+        .DOWN => state.joypad.setButton(.Down, is_down),
+        .LEFT => state.joypad.setButton(.Left, is_down),
+        .RIGHT => state.joypad.setButton(.Right, is_down),
+        else => {},
+    }
 }
 
 fn drawMainMenu() void {
