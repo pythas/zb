@@ -8,6 +8,7 @@ const sapp = sokol.app;
 const sglue = sokol.glue;
 const simgui = sokol.imgui;
 const sgimgui = sokol.sgimgui;
+const saudio = sokol.audio;
 
 const Gpu = @import("gpu.zig").Gpu;
 const Apu = @import("apu.zig").Apu;
@@ -45,7 +46,7 @@ const AppState = struct {
         ptr.* = .{
             .allocator = allocator,
             .gpu = Gpu.init(),
-            .apu = Apu.init(),
+            .apu = Apu.init(allocator, 44100),
             .joypad = Joypad.init(),
             .timer = Timer.init(),
             .bus = undefined,
@@ -81,6 +82,7 @@ const AppState = struct {
     }
 };
 
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var state: *AppState = undefined;
 
 fn readBinaryFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
@@ -100,7 +102,10 @@ export fn init() void {
         .logger = .{ .func = slog.func },
     });
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    saudio.setup(.{
+        .logger = .{ .func = slog.func },
+    });
+
     state = AppState.init(gpa.allocator()) catch |err| {
         std.debug.panic("Failed to init emulator: {}", .{err});
     };
@@ -118,10 +123,16 @@ export fn frame() void {
 
     var cycles_run: usize = 0;
     while (!state.gpu.frame_ready and cycles_run < 70224 * 2) {
-        state.cpu.cycle();
+        state.cpu.cycle() catch std.debug.panic("Oops.", .{});
         cycles_run += 4;
     }
     state.gpu.frame_ready = false;
+
+    _ = saudio.push(
+        @ptrCast(state.bus.apu.buffer.items.ptr),
+        @intCast(state.bus.apu.buffer.items.len),
+    );
+    state.bus.apu.clearBuffer();
 
     simgui.newFrame(.{
         .width = @intFromFloat(width),
@@ -163,11 +174,18 @@ export fn event(ev: [*c]const sapp.Event) void {
 }
 
 export fn cleanup() void {
+    state.emulator_window.deinit();
+    state.tile_window.deinit();
+    state.apu.deinit();
+
+    const allocator = state.allocator;
+    allocator.destroy(state);
+
+    saudio.shutdown();
     simgui.shutdown();
     sg.shutdown();
 
-    state.emulator_window.deinit();
-    state.tile_window.deinit();
+    _ = gpa.deinit();
 }
 
 fn handleInput(key: sapp.Keycode, is_down: bool) void {

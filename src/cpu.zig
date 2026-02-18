@@ -132,7 +132,7 @@ pub fn Cpu(comptime BusType: type) type {
             }
         }
 
-        pub fn cycle(self: *Self) void {
+        pub fn cycle(self: *Self) !void {
             const t = if (self.halted) 4 else self.step();
             const m = t / 4;
 
@@ -167,6 +167,8 @@ pub fn Cpu(comptime BusType: type) type {
             if (timer_interrupt) |interrupt| {
                 self.bus.intf |= @intFromEnum(interrupt);
             }
+
+            try self.bus.apu.cycle(t);
 
             if (self.ei_delay > 0) {
                 self.ei_delay -= 1;
